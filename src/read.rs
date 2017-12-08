@@ -43,20 +43,17 @@ impl Type {
     }
 }
 
+use util::FromValue;
+
 pub trait GetResultAsType {
-    fn as_type(self, t: Type) -> Result<Value>;
+    type Output: FromValue;
+    fn as_type(self) -> Result<Self::Output>;
 }
 
 impl GetResultAsType for Result<Value> {
-    fn as_type(self, t: Type) -> Result<Value> {
-        self.and_then(|o| {
-            if t.matches(&o) {
-                Ok(o)
-            } else {
-                Err(ErrorKind::TypeError(t.name(), ::util::name_of_val(&o)).into())
-            }
-        })
-
+    type Output = FromValue;
+    fn as_type(self) -> Result<Self::Output> {
+        self.and_then(Self::Output::from_value)
     }
 }
 
