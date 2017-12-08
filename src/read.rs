@@ -5,6 +5,61 @@ use toml::Value;
 use tokenizer::tokenize_with_seperator;
 use error::*;
 
+/// Type of a Value
+pub enum Type {
+    String,
+    Integer,
+    Float,
+    Boolean,
+    Datetime,
+    Array,
+    Table,
+}
+
+impl Type {
+    fn matches(&self, v: &Value) -> bool {
+        match (self, v) {
+            (&Type::String, &Value::String(_))     |
+            (&Type::Integer, &Value::Integer(_))   |
+            (&Type::Float, &Value::Float(_))       |
+            (&Type::Boolean, &Value::Boolean(_))   |
+            (&Type::Datetime, &Value::Datetime(_)) |
+            (&Type::Array, &Value::Array(_))       |
+            (&Type::Table, &Value::Table(_))       => true,
+            (_, _)                  => false,
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        match *self {
+            Type::Array    => "Array",
+            Type::Boolean  => "Boolean",
+            Type::Datetime => "Datetime",
+            Type::Float    => "Float",
+            Type::Integer  => "Integer",
+            Type::String   => "String",
+            Type::Table    => "Table",
+        }
+    }
+}
+
+pub trait GetResultAsType {
+    fn as_type(self, t: Type) -> Result<Value>;
+}
+
+impl GetResultAsType for Result<Value> {
+    fn as_type(self, t: Type) -> Result<Value> {
+        self.and_then(|o| {
+            if t.matches(&o) {
+                Ok(o)
+            } else {
+                Err(ErrorKind::TypeError(t.name(), ::util::name_of_val(&o)).into())
+            }
+        })
+
+    }
+}
+
 pub trait TomlValueReadExt<'doc> {
 
     /// Extension function for reading a value from the current toml::Value document
