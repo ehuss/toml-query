@@ -44,11 +44,14 @@ impl Type {
 }
 
 pub trait GetResultAsType {
-    fn as_type(self, t: Type) -> Result<Value>;
+    type Output;
+    fn as_type(self, t: Type) -> Result<Self::Output>;
 }
 
 impl GetResultAsType for Result<Value> {
-    fn as_type(self, t: Type) -> Result<Value> {
+    type Output = Value;
+
+    fn as_type(self, t: Type) -> Result<Self::Output> {
         self.and_then(|o| {
             if t.matches(&o) {
                 Ok(o)
@@ -56,7 +59,51 @@ impl GetResultAsType for Result<Value> {
                 Err(ErrorKind::TypeError(t.name(), ::util::name_of_val(&o)).into())
             }
         })
+    }
+}
 
+impl<'a> GetResultAsType for Result<&'a Value> {
+    type Output = &'a Value;
+
+    fn as_type(self, t: Type) -> Result<Self::Output> {
+        self.and_then(|o| {
+            if t.matches(&o) {
+                Ok(o)
+            } else {
+                Err(ErrorKind::TypeError(t.name(), ::util::name_of_val(&o)).into())
+            }
+        })
+    }
+}
+
+
+impl GetResultAsType for Result<Option<Value>> {
+    type Output = Option<Value>;
+
+    fn as_type(self, t: Type) -> Result<Self::Output> {
+        self.and_then(|o| match o {
+            None    => Ok(None),
+            Some(x) => if t.matches(&x) {
+                Ok(Some(x))
+            } else {
+                Err(ErrorKind::TypeError(t.name(), ::util::name_of_val(&x)).into())
+            }
+        })
+    }
+}
+
+impl<'a> GetResultAsType for Result<Option<&'a Value>> {
+    type Output = Option<&'a Value>;
+
+    fn as_type(self, t: Type) -> Result<Self::Output> {
+        self.and_then(|o| match o {
+            None    => Ok(None),
+            Some(x) => if t.matches(&x) {
+                Ok(Some(x))
+            } else {
+                Err(ErrorKind::TypeError(t.name(), ::util::name_of_val(&x)).into())
+            }
+        })
     }
 }
 
