@@ -1,4 +1,4 @@
-use error::Result;
+use std::result::Result;
 use error::ErrorKind;
 
 use toml::Value;
@@ -12,6 +12,17 @@ pub enum Type {
     Datetime,
     Array,
     Table,
+}
+
+pub enum Error<E> {
+    TomlQueryError(::error::Error),
+    Other(E),
+}
+
+impl<E> From<E> for Error<E> {
+    fn from(e: E) -> Error<E> {
+        Error::Other(e)
+    }
 }
 
 impl Type {
@@ -41,65 +52,69 @@ impl Type {
     }
 }
 
-pub trait GetResultAsType {
+pub trait GetResultAsType<E> {
     type Output;
-    fn as_type(self, t: Type) -> Result<Self::Output>;
+    fn as_type(self, t: Type) -> Result<Self::Output, Error<E>>;
 }
 
-impl GetResultAsType for Result<Value> {
+impl<E> GetResultAsType<E> for Result<Value, Error<E>> {
     type Output = Value;
 
-    fn as_type(self, t: Type) -> Result<Self::Output> {
+    fn as_type(self, t: Type) -> Result<Self::Output, Error<E>> {
         self.and_then(|o| {
             if t.matches(&o) {
                 Ok(o)
             } else {
-                Err(ErrorKind::TypeError(t.name(), ::util::name_of_val(&o)).into())
+                let e = ErrorKind::TypeError(t.name(), ::util::name_of_val(&o));
+                Err(Error::TomlQueryError(e.into()))
             }
         })
     }
 }
 
-impl<'a> GetResultAsType for Result<&'a Value> {
+impl<'a, E> GetResultAsType<E> for Result<&'a Value, Error<E>> {
     type Output = &'a Value;
 
-    fn as_type(self, t: Type) -> Result<Self::Output> {
+    fn as_type(self, t: Type) -> Result<Self::Output, Error<E>> {
         self.and_then(|o| {
             if t.matches(&o) {
                 Ok(o)
             } else {
-                Err(ErrorKind::TypeError(t.name(), ::util::name_of_val(&o)).into())
+                let e = ErrorKind::TypeError(t.name(), ::util::name_of_val(&o));
+                Err(Error::TomlQueryError(e.into()))
             }
         })
     }
 }
 
 
-impl GetResultAsType for Result<Option<Value>> {
+impl<E> GetResultAsType<E> for Result<Option<Value>, Error<E>> {
     type Output = Option<Value>;
 
-    fn as_type(self, t: Type) -> Result<Self::Output> {
+    fn as_type(self, t: Type) -> Result<Self::Output, Error<E>> {
         self.and_then(|o| match o {
             None    => Ok(None),
             Some(x) => if t.matches(&x) {
                 Ok(Some(x))
             } else {
-                Err(ErrorKind::TypeError(t.name(), ::util::name_of_val(&x)).into())
+                let e = ErrorKind::TypeError(t.name(), ::util::name_of_val(&x));
+                Err(Error::TomlQueryError(e.into()))
             }
         })
     }
 }
 
-impl<'a> GetResultAsType for Result<Option<&'a Value>> {
+impl<'a, E> GetResultAsType<E> for Result<Option<&'a Value>, Error<E>> {
     type Output = Option<&'a Value>;
 
-    fn as_type(self, t: Type) -> Result<Self::Output> {
+    fn as_type(self, t: Type) -> Result<Self::Output, Error<E>> {
         self.and_then(|o| match o {
             None    => Ok(None),
             Some(x) => if t.matches(&x) {
                 Ok(Some(x))
             } else {
-                Err(ErrorKind::TypeError(t.name(), ::util::name_of_val(&x)).into())
+                let e = ErrorKind::TypeError(t.name(), ::util::name_of_val(&x));
+                Err(Error::TomlQueryError(e.into()))
             }
         })
     }
