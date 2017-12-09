@@ -43,39 +43,48 @@ impl<'doc> TomlValueReadExt<'doc> for Value {
 
 }
 
-pub trait TomlValueReadTypeExt<'doc> {
-    fn read_string(&'doc self, query: &str) -> Result<String>;
-    fn read_int(&'doc self, query: &str) -> Result<i64>;
-    fn read_float(&'doc self, query: &str) -> Result<f64>;
-    fn read_bool(&'doc self, query: &str) -> Result<bool>;
-}
+pub mod typed {
+    use toml::Value;
 
-macro_rules! make_type_getter {
-    ($fnname:ident, $rettype:ty, $typename:expr, $matcher:pat => $implementation:expr) => {
-        fn $fnname(&'doc self, query: &str) -> Result<$rettype> {
-            self.read_with_seperator(query, '.').and_then(|o| match o {
-                $matcher => $implementation,
-                Some(o)  => Err(ErrorKind::TypeError($typename, ::util::name_of_val(&o)).into()),
-                None     => Err(ErrorKind::NotAvailable(String::from(query)).into()),
-            })
-        }
-    };
-}
+    use super::TomlValueReadExt;
+    use error::Result;
+    use error::ErrorKind;
 
-impl<'doc, T> TomlValueReadTypeExt<'doc> for T
-    where T: TomlValueReadExt<'doc>
-{
-    make_type_getter!(read_string, String, "String",
-                      Some(&Value::String(ref obj)) => Ok(obj.clone()));
+    pub trait TomlValueReadTypeExt<'doc> {
+        fn read_string(&'doc self, query: &str) -> Result<String>;
+        fn read_int(&'doc self, query: &str) -> Result<i64>;
+        fn read_float(&'doc self, query: &str) -> Result<f64>;
+        fn read_bool(&'doc self, query: &str) -> Result<bool>;
+    }
 
-    make_type_getter!(read_int, i64, "Integer",
-                      Some(&Value::Integer(obj)) => Ok(obj));
+    macro_rules! make_type_getter {
+        ($fnname:ident, $rettype:ty, $typename:expr, $matcher:pat => $implementation:expr) => {
+            fn $fnname(&'doc self, query: &str) -> Result<$rettype> {
+                self.read_with_seperator(query, '.').and_then(|o| match o {
+                    $matcher => $implementation,
+                    Some(o)  => Err(ErrorKind::TypeError($typename, ::util::name_of_val(&o)).into()),
+                    None     => Err(ErrorKind::NotAvailable(String::from(query)).into()),
+                })
+            }
+        };
+    }
 
-    make_type_getter!(read_float, f64, "Float",
-                      Some(&Value::Float(obj)) => Ok(obj));
+    impl<'doc, T> TomlValueReadTypeExt<'doc> for T
+        where T: TomlValueReadExt<'doc>
+    {
+        make_type_getter!(read_string, String, "String",
+                          Some(&Value::String(ref obj)) => Ok(obj.clone()));
 
-    make_type_getter!(read_bool, bool, "Boolean",
-                      Some(&Value::Boolean(obj)) => Ok(obj));
+        make_type_getter!(read_int, i64, "Integer",
+                          Some(&Value::Integer(obj)) => Ok(obj));
+
+        make_type_getter!(read_float, f64, "Float",
+                          Some(&Value::Float(obj)) => Ok(obj));
+
+        make_type_getter!(read_bool, bool, "Boolean",
+                          Some(&Value::Boolean(obj)) => Ok(obj));
+    }
+
 }
 
 #[cfg(test)]
