@@ -364,5 +364,26 @@ mod high_level_fn_test {
         assert_eq!(val.unwrap(), 1);
     }
 
+    #[test]
+    fn test_read_table_value_result_ext() {
+        use ::read::GetResultAsType;
+        let toml : Value = toml_from_str(r#"
+        [table]
+        a = 1
+        "#).unwrap();
+
+        let val = toml.read(&String::from("table.a")).as_type(Type::Integer);
+
+        assert!(val.is_ok());
+        assert_eq!(*val.unwrap().unwrap(), Value::Integer(1));
+
+        assert!(toml.read(&String::from("table.a")).as_type(Type::String).is_err());
+        assert!(toml.read(&String::from("table.a")).as_type(Type::Float).is_err());
+        assert!(toml.read(&String::from("table.a")).as_type(Type::Boolean).is_err());
+        assert!(toml.read(&String::from("table.a")).as_type(Type::Datetime).is_err());
+        assert!(toml.read(&String::from("table.a")).as_type(Type::Array).is_err());
+        assert!(toml.read(&String::from("table.a")).as_type(Type::Table).is_err());
+    }
+
 }
 
