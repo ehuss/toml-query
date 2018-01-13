@@ -3,6 +3,8 @@
 use std::ops::IndexMut;
 
 use toml::Value;
+use toml::value::Array;
+use toml::value::Table;
 use tokenizer::Token;
 use error::*;
 
@@ -14,45 +16,8 @@ use error::*;
 ///
 pub fn resolve<'doc>(toml: &'doc mut Value, tokens: &Token, error_if_not_found: bool) -> Result<Option<&'doc mut Value>> {
     match toml {
-        &mut Value::Table(ref mut t) => {
-            match tokens {
-                &Token::Identifier { ref ident, .. } => {
-                    match t.get_mut(ident) {
-                        None => if error_if_not_found {
-                            let err = ErrorKind::IdentifierNotFoundInDocument(ident.to_owned());
-                            return Err(Error::from(err))
-                        } else {
-                            Ok(None)
-                        },
-                        Some(sub_document) => match tokens.next() {
-                            Some(next) => resolve(sub_document, next, error_if_not_found),
-                            None       => Ok(Some(sub_document)),
-                        },
-                    }
-                },
-
-                &Token::Index { idx, .. } => {
-                    let kind = ErrorKind::NoIndexInTable(idx);
-                    Err(Error::from(kind))
-                },
-            }
-        },
-
-        &mut Value::Array(ref mut ary) => {
-            match tokens {
-                &Token::Index { idx, .. } => {
-                    match tokens.next() {
-                        Some(next) => resolve(ary.get_mut(idx).unwrap(), next, error_if_not_found),
-                        None       => Ok(Some(ary.index_mut(idx))),
-                    }
-                },
-                &Token::Identifier { ref ident, .. } => {
-                    let kind = ErrorKind::NoIdentifierInArray(ident.clone());
-                    Err(Error::from(kind))
-                },
-            }
-        },
-
+        &mut Value::Table(ref mut t)   => resolve_table(t, tokens, error_if_not_found),
+        &mut Value::Array(ref mut ary) => resolve_array(ary, tokens, error_if_not_found),
         _ => match tokens {
             &Token::Identifier { ref ident, .. } => {
                 Err(Error::from(ErrorKind::QueryingValueAsTable(ident.clone())))
@@ -62,6 +27,45 @@ pub fn resolve<'doc>(toml: &'doc mut Value, tokens: &Token, error_if_not_found: 
                 Err(Error::from(ErrorKind::QueryingValueAsArray(idx)))
             },
         }
+    }
+}
+
+pub fn resolve_table<'doc>(t: &'doc mut Table, tokens: &Token, error_if_not_found: bool) -> Result<Option<&'doc mut Value>> {
+    match tokens {
+        &Token::Identifier { ref ident, .. } => {
+            match t.get_mut(ident) {
+                None => if error_if_not_found {
+                    let err = ErrorKind::IdentifierNotFoundInDocument(ident.to_owned());
+                    return Err(Error::from(err))
+                } else {
+                    Ok(None)
+                },
+                Some(sub_document) => match tokens.next() {
+                    Some(next) => resolve(sub_document, next, error_if_not_found),
+                    None       => Ok(Some(sub_document)),
+                },
+            }
+        },
+
+        &Token::Index { idx, .. } => {
+            let kind = ErrorKind::NoIndexInTable(idx);
+            Err(Error::from(kind))
+        },
+    }
+}
+
+pub fn resolve_array<'doc>(ary: &'doc mut Array, tokens: &Token, error_if_not_found: bool) -> Result<Option<&'doc mut Value>> {
+    match tokens {
+        &Token::Index { idx, .. } => {
+            match tokens.next() {
+                Some(next) => resolve(ary.get_mut(idx).unwrap(), next, error_if_not_found),
+                None       => Ok(Some(ary.index_mut(idx))),
+            }
+        },
+        &Token::Identifier { ref ident, .. } => {
+            let kind = ErrorKind::NoIdentifierInArray(ident.clone());
+            Err(Error::from(kind))
+        },
     }
 }
 
