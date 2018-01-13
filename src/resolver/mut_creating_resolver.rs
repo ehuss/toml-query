@@ -7,25 +7,10 @@ use tokenizer::Token;
 use error::*;
 
 pub fn resolve<'doc>(toml: &'doc mut Value, tokens: &Token) -> Result<&'doc mut Value> {
-
-    // Cases:
-    //
-    //  1. Identifier, toml: table, ident present       -> traverse
-    //  2. Identifier, toml: table, no indent present   -> create Table
-    //      2.1 If next token                           -> traverse
-    //      2.2 no next token                           -> return created Table
-    //  3. Identifier, toml: array                      -> error
-    //  4. Index, toml: table                           -> error
-    //  5. Index, toml: array, idx present              -> traverse
-    //  6. Index, toml: array, idx not present
-    //      6.1 -> next token is ident                  -> push Table
-    //      6.2 -> next token is index                  -> push Array
-    //      then traverse
-
-    match *tokens {
-        Token::Identifier { ref ident, .. } => {
-            match toml {
-                &mut Value::Table(ref mut t) => {
+    match toml {
+        &mut Value::Table(ref mut t) => {
+            match *tokens {
+                Token::Identifier { ref ident, .. } => {
                     if t.contains_key(ident) {
                         match tokens.next() {
                             Some(next) => resolve(t.get_mut(ident).unwrap(), next),
@@ -41,20 +26,16 @@ pub fn resolve<'doc>(toml: &'doc mut Value, tokens: &Token) -> Result<&'doc mut 
                         }
                     }
                 },
-                &mut Value::Array(_) => {
-                    let kind = ErrorKind::NoIdentifierInArray(ident.clone());
-                    Err(Error::from_kind(kind))
-                }
-                _ => unimplemented!()
-            }
-        }
-        Token::Index { idx , .. } => {
-            match toml {
-                &mut Value::Table(_) => {
+                Token::Index { idx , .. } => {
                     let kind = ErrorKind::NoIndexInTable(idx);
                     Err(Error::from_kind(kind))
-                },
-                &mut Value::Array(ref mut ary) => {
+                }
+            }
+        },
+
+        &mut Value::Array(ref mut ary) => {
+            match *tokens {
+                Token::Index { idx , .. } => {
                     if ary.len() > idx {
                         match tokens.next() {
                             Some(next) => resolve(ary.get_mut(idx).unwrap(), next),
@@ -76,10 +57,15 @@ pub fn resolve<'doc>(toml: &'doc mut Value, tokens: &Token) -> Result<&'doc mut 
                             unimplemented!()
                         }
                     }
+                },
+                Token::Identifier { ref ident, .. } => {
+                    let kind = ErrorKind::NoIdentifierInArray(ident.clone());
+                    Err(Error::from_kind(kind))
                 }
-                _ => unimplemented!()
             }
         }
+
+        _ => unimplemented!()
     }
 }
 
