@@ -3,69 +3,73 @@
 use std::collections::BTreeMap;
 
 use toml::Value;
+use toml::value::Table;
+use toml::value::Array;
 use tokenizer::Token;
 use error::*;
 
 pub fn resolve<'doc>(toml: &'doc mut Value, tokens: &Token) -> Result<&'doc mut Value> {
     match toml {
-        &mut Value::Table(ref mut t) => {
-            match *tokens {
-                Token::Identifier { ref ident, .. } => {
-                    if t.contains_key(ident) {
-                        match tokens.next() {
-                            Some(next) => resolve(t.get_mut(ident).unwrap(), next),
-                            None => t.get_mut(ident).ok_or_else(|| unreachable!()),
-                        }
-                    } else {
-                        match tokens.next() {
-                            Some(next) => {
-                                let subdoc = t.entry(ident.clone()).or_insert(Value::Table(BTreeMap::new()));
-                                resolve(subdoc, next)
-                            },
-                            None => Ok(t.entry(ident.clone()).or_insert(Value::Table(BTreeMap::new()))),
-                        }
-                    }
-                },
-                Token::Index { idx , .. } => {
-                    let kind = ErrorKind::NoIndexInTable(idx);
-                    Err(Error::from_kind(kind))
+        &mut Value::Table(ref mut t) => resolve_table(t, tokens),
+        &mut Value::Array(ref mut ary) => resolve_array(ary, tokens),
+        _ => unimplemented!()
+    }
+}
+
+pub fn resolve_table<'doc>(t: &'doc mut Table, tokens: &Token) -> Result<&'doc mut Value> {
+    match *tokens {
+        Token::Identifier { ref ident, .. } => {
+            if t.contains_key(ident) {
+                match tokens.next() {
+                    Some(next) => resolve(t.get_mut(ident).unwrap(), next),
+                    None => t.get_mut(ident).ok_or_else(|| unreachable!()),
+                }
+            } else {
+                match tokens.next() {
+                    Some(next) => {
+                        let subdoc = t.entry(ident.clone()).or_insert(Value::Table(BTreeMap::new()));
+                        resolve(subdoc, next)
+                    },
+                    None => Ok(t.entry(ident.clone()).or_insert(Value::Table(BTreeMap::new()))),
                 }
             }
         },
+        Token::Index { idx , .. } => {
+            let kind = ErrorKind::NoIndexInTable(idx);
+            Err(Error::from_kind(kind))
+        }
+    }
+}
 
-        &mut Value::Array(ref mut ary) => {
-            match *tokens {
-                Token::Index { idx , .. } => {
-                    if ary.len() > idx {
-                        match tokens.next() {
-                            Some(next) => resolve(ary.get_mut(idx).unwrap(), next),
-                            None => ary.get_mut(idx).ok_or_else(|| unreachable!()),
-                        }
-                    } else {
-                        if let Some(next) = tokens.next() {
-                            match **next {
-                                Token::Identifier { .. } => {
-                                    ary.push(Value::Table(BTreeMap::new()));
-                                },
-                                Token::Index { .. } => {
-                                    ary.push(Value::Array(vec![]));
-                                }
-                            }
-                            //resolve(toml, next)
-                            panic!("Cannot do this")
-                        } else {
-                            unimplemented!()
+pub fn resolve_array<'doc>(ary: &'doc mut Array, tokens: &Token) -> Result<&'doc mut Value> {
+    match *tokens {
+        Token::Index { idx , .. } => {
+            if ary.len() > idx {
+                match tokens.next() {
+                    Some(next) => resolve(ary.get_mut(idx).unwrap(), next),
+                    None => ary.get_mut(idx).ok_or_else(|| unreachable!()),
+                }
+            } else {
+                if let Some(next) = tokens.next() {
+                    match **next {
+                        Token::Identifier { .. } => {
+                            ary.push(Value::Table(BTreeMap::new()));
+                        },
+                        Token::Index { .. } => {
+                            ary.push(Value::Array(vec![]));
                         }
                     }
-                },
-                Token::Identifier { ref ident, .. } => {
-                    let kind = ErrorKind::NoIdentifierInArray(ident.clone());
-                    Err(Error::from_kind(kind))
+                    //resolve(toml, next)
+                    panic!("Cannot do this")
+                } else {
+                    unimplemented!()
                 }
             }
+        },
+        Token::Identifier { ref ident, .. } => {
+            let kind = ErrorKind::NoIdentifierInArray(ident.clone());
+            Err(Error::from_kind(kind))
         }
-
-        _ => unimplemented!()
     }
 }
 
