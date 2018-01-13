@@ -3,6 +3,8 @@
 use std::ops::Index;
 
 use toml::Value;
+use toml::value::Table;
+use toml::value::Array;
 use tokenizer::Token;
 use error::*;
 
@@ -14,44 +16,8 @@ use error::*;
 ///
 pub fn resolve<'doc>(toml: &'doc Value, tokens: &Token, error_if_not_found: bool) -> Result<Option<&'doc Value>> {
     match toml {
-        &Value::Table(ref t) => {
-            match tokens {
-                &Token::Identifier { ref ident, .. } => {
-                    match t.get(ident) {
-                        None => if error_if_not_found {
-                            let err = ErrorKind::IdentifierNotFoundInDocument(ident.to_owned());
-                            return Err(Error::from(err))
-                        } else {
-                            Ok(None)
-                        },
-                        Some(sub_document) => match tokens.next() {
-                            Some(next) => resolve(sub_document, next, error_if_not_found),
-                            None       => Ok(Some(sub_document)),
-                        },
-                    }
-                },
-
-                &Token::Index { idx, .. } => {
-                    let kind = ErrorKind::NoIndexInTable(idx);
-                    Err(Error::from(kind))
-                },
-            }
-        },
-
-        &Value::Array(ref ary) => {
-            match tokens {
-                &Token::Index { idx, .. } => {
-                    match tokens.next() {
-                        Some(next) => resolve(ary.get(idx).unwrap(), next, error_if_not_found),
-                        None       => Ok(Some(ary.index(idx))),
-                    }
-                },
-                &Token::Identifier { ref ident, .. } => {
-                    let kind = ErrorKind::NoIdentifierInArray(ident.clone());
-                    Err(Error::from(kind))
-                },
-            }
-        },
+        &Value::Table(ref t)   => resolve_table(t, tokens, error_if_not_found),
+        &Value::Array(ref ary) => resolve_array(ary, tokens, error_if_not_found),
 
         _ => match tokens {
             &Token::Identifier { ref ident, .. } => {
@@ -62,6 +28,45 @@ pub fn resolve<'doc>(toml: &'doc Value, tokens: &Token, error_if_not_found: bool
                 Err(Error::from(ErrorKind::QueryingValueAsArray(idx)))
             },
         }
+    }
+}
+
+pub fn resolve_table<'doc>(t: &'doc Table, tokens: &Token, error_if_not_found: bool) -> Result<Option<&'doc Value>> {
+    match tokens {
+        &Token::Identifier { ref ident, .. } => {
+            match t.get(ident) {
+                None => if error_if_not_found {
+                    let err = ErrorKind::IdentifierNotFoundInDocument(ident.to_owned());
+                    return Err(Error::from(err))
+                } else {
+                    Ok(None)
+                },
+                Some(sub_document) => match tokens.next() {
+                    Some(next) => resolve(sub_document, next, error_if_not_found),
+                    None       => Ok(Some(sub_document)),
+                },
+            }
+        },
+
+        &Token::Index { idx, .. } => {
+            let kind = ErrorKind::NoIndexInTable(idx);
+            Err(Error::from(kind))
+        },
+    }
+}
+
+pub fn resolve_array<'doc>(ary: &'doc Array, tokens: &Token, error_if_not_found: bool) -> Result<Option<&'doc Value>> {
+    match tokens {
+        &Token::Index { idx, .. } => {
+            match tokens.next() {
+                Some(next) => resolve(ary.get(idx).unwrap(), next, error_if_not_found),
+                None       => Ok(Some(ary.index(idx))),
+            }
+        },
+        &Token::Identifier { ref ident, .. } => {
+            let kind = ErrorKind::NoIdentifierInArray(ident.clone());
+            Err(Error::from(kind))
+        },
     }
 }
 
