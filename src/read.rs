@@ -1,6 +1,8 @@
 /// The Toml Read extensions
 
 use toml::Value;
+use toml::value::Table;
+use toml::value::Array;
 
 use tokenizer::tokenize_with_seperator;
 use error::*;
@@ -41,6 +43,34 @@ impl<'doc> TomlValueReadExt<'doc> for Value {
         tokenize_with_seperator(query, sep).and_then(move |tokens| resolve(self, &tokens, false))
     }
 
+}
+
+impl<'doc> TomlValueReadExt<'doc> for Table {
+    fn read_with_seperator(&'doc self, query: &str, sep: char) -> Result<Option<&'doc Value>> {
+        use resolver::non_mut_resolver::resolve_table;
+
+        tokenize_with_seperator(query, sep).and_then(move |tokens| resolve_table(self, &tokens, false))
+    }
+
+    fn read_mut_with_seperator(&'doc mut self, query: &str, sep: char) -> Result<Option<&'doc mut Value>> {
+        use resolver::mut_resolver::resolve_table;
+
+        tokenize_with_seperator(query, sep).and_then(move |tokens| resolve_table(self, &tokens, false))
+    }
+}
+
+impl<'doc> TomlValueReadExt<'doc> for Array {
+    fn read_with_seperator(&'doc self, query: &str, sep: char) -> Result<Option<&'doc Value>> {
+        use resolver::non_mut_resolver::resolve_array;
+
+        tokenize_with_seperator(query, sep).and_then(move |tokens| resolve_array(self, &tokens, false))
+    }
+
+    fn read_mut_with_seperator(&'doc mut self, query: &str, sep: char) -> Result<Option<&'doc mut Value>> {
+        use resolver::mut_resolver::resolve_array;
+
+        tokenize_with_seperator(query, sep).and_then(move |tokens| resolve_array(self, &tokens, false))
+    }
 }
 
 pub trait TomlValueReadTypeExt<'doc> : TomlValueReadExt<'doc> {

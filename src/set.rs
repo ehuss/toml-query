@@ -1,6 +1,8 @@
 /// The Toml Set extensions
 
 use toml::Value;
+use toml::value::Array;
+use toml::value::Table;
 
 use tokenizer::tokenize_with_seperator;
 use tokenizer::Token;
@@ -92,6 +94,116 @@ impl TomlValueSetExt for Value {
         }
     }
 
+}
+
+impl TomlValueSetExt for Table {
+    fn set_with_seperator(&mut self, query: &str, sep: char, value: Value) -> Result<Option<Value>> {
+        use resolver::mut_resolver::resolve_table;
+
+        let mut tokens = try!(tokenize_with_seperator(query, sep));
+        let last = tokens.pop_last();
+
+        let val = try!(resolve_table(self, &tokens, true))
+            .unwrap(); // safe because of resolve() guarantees
+        let last = last.unwrap_or_else(|| Box::new(tokens));
+
+        match *last {
+            Token::Identifier { ident, .. } => {
+                match val {
+                    &mut Value::Table(ref mut t) => {
+                        Ok(t.insert(ident, value))
+                    },
+                    &mut Value::Array(_) => {
+                        let kind = ErrorKind::NoIdentifierInArray(ident);
+                        Err(Error::from(kind))
+                    }
+                    _ => {
+                        let kind = ErrorKind::QueryingValueAsTable(ident);
+                        Err(Error::from(kind))
+                    }
+                }
+            }
+
+            Token::Index { idx, .. } => {
+                match val {
+                    &mut Value::Array(ref mut a) => {
+                        if a.len() > idx {
+                            let result = a.swap_remove(idx);
+                            a.insert(idx, value);
+                            Ok(Some(result))
+                        } else {
+                            a.push(value);
+                            Ok(None)
+                        }
+                    }
+                    &mut Value::Table(_) => {
+                        let kind = ErrorKind::NoIndexInTable(idx);
+                        Err(Error::from(kind))
+                    }
+                    _ => {
+                        let kind = ErrorKind::QueryingValueAsArray(idx);
+                        Err(Error::from(kind))
+                    }
+                }
+            }
+
+        }
+    }
+}
+
+impl TomlValueSetExt for Array {
+    fn set_with_seperator(&mut self, query: &str, sep: char, value: Value) -> Result<Option<Value>> {
+        use resolver::mut_resolver::resolve_array;
+
+        let mut tokens = try!(tokenize_with_seperator(query, sep));
+        let last = tokens.pop_last();
+
+        let val = try!(resolve_array(self, &tokens, true))
+            .unwrap(); // safe because of resolve() guarantees
+        let last = last.unwrap_or_else(|| Box::new(tokens));
+
+        match *last {
+            Token::Identifier { ident, .. } => {
+                match val {
+                    &mut Value::Table(ref mut t) => {
+                        Ok(t.insert(ident, value))
+                    },
+                    &mut Value::Array(_) => {
+                        let kind = ErrorKind::NoIdentifierInArray(ident);
+                        Err(Error::from(kind))
+                    }
+                    _ => {
+                        let kind = ErrorKind::QueryingValueAsTable(ident);
+                        Err(Error::from(kind))
+                    }
+                }
+            }
+
+            Token::Index { idx, .. } => {
+                match val {
+                    &mut Value::Array(ref mut a) => {
+                        if a.len() > idx {
+                            let result = a.swap_remove(idx);
+                            a.insert(idx, value);
+                            Ok(Some(result))
+                        } else {
+                            a.push(value);
+                            Ok(None)
+                        }
+                    }
+                    &mut Value::Table(_) => {
+                        let kind = ErrorKind::NoIndexInTable(idx);
+                        Err(Error::from(kind))
+                    }
+                    _ => {
+                        let kind = ErrorKind::QueryingValueAsArray(idx);
+                        Err(Error::from(kind))
+                    }
+                }
+            }
+
+        }
+    }
 }
 
 #[cfg(test)]

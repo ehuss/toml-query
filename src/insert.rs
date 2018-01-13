@@ -1,6 +1,8 @@
 /// The Toml Insert extensions
 
 use toml::Value;
+use toml::value::Array;
+use toml::value::Table;
 
 use tokenizer::Token;
 use tokenizer::tokenize_with_seperator;
@@ -126,6 +128,89 @@ impl TomlValueInsertExt for Value {
         }
     }
 
+}
+
+impl TomlValueInsertExt for Table {
+    fn insert_with_seperator(&mut self, query: &str, sep: char, value: Value) -> Result<Option<Value>> {
+        use resolver::mut_creating_resolver::resolve_table;
+
+        let mut tokens = try!(tokenize_with_seperator(query, sep));
+        match tokens.pop_last() {
+            None => match tokens {
+                Token::Identifier { ident, .. } => Ok(self.insert(ident, value)),
+                Token::Index { idx , .. } => Err(Error::from(ErrorKind::NoIndexInTable(idx))),
+            },
+            Some(last) => {
+                let val = try!(resolve_table(self, &tokens));
+                match *last {
+                    Token::Identifier { ident, .. } => match val {
+                        &mut Value::Table(ref mut t) => Ok(t.insert(ident, value)),
+                        _ => Err(Error::from(ErrorKind::NoIdentifierInArray(ident.clone())))
+                    },
+
+                    Token::Index { idx , .. } => match val {
+                        &mut Value::Array(ref mut a) => if a.len() > idx {
+                            a.insert(idx, value);
+                            Ok(None)
+                        } else {
+                            a.push(value);
+                            Ok(None)
+                        },
+                        _ => Err(Error::from(ErrorKind::NoIndexInTable(idx)))
+                    },
+                }
+            },
+        }
+    }
+}
+
+impl TomlValueInsertExt for Array {
+    fn insert_with_seperator(&mut self, query: &str, sep: char, value: Value) -> Result<Option<Value>> {
+        use resolver::mut_creating_resolver::resolve_array;
+
+        let mut tokens = try!(tokenize_with_seperator(query, sep));
+        match tokens.pop_last() {
+            None       => match tokens {
+                Token::Identifier { ident, .. } => Err(Error::from(ErrorKind::NoIdentifierInArray(ident.clone()))),
+                Token::Index { idx , .. } => if self.len() > idx {
+                    self.insert(idx, value);
+                    Ok(None)
+                } else {
+                    self.push(value);
+                    Ok(None)
+                },
+            }
+            Some(last) => {
+                let val = try!(resolve_array(self, &tokens));
+                match *last {
+                    Token::Identifier { ident, .. } => {
+                        match val {
+                            &mut Value::Table(ref mut t) => {
+                                Ok(t.insert(ident, value))
+                            },
+                            _ => Err(Error::from(ErrorKind::NoIdentifierInArray(ident.clone())))
+                        }
+                    },
+
+                    Token::Index { idx , .. } => {
+                        match val {
+                            &mut Value::Array(ref mut a) => {
+                                if a.len() > idx {
+                                    a.insert(idx, value);
+                                    Ok(None)
+                                } else {
+                                    a.push(value);
+                                    Ok(None)
+                                }
+                            },
+                            _ => Err(Error::from(ErrorKind::NoIndexInTable(idx)))
+                        }
+                    },
+                }
+            },
+        }
+
+    }
 }
 
 #[cfg(test)]

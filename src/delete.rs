@@ -1,6 +1,8 @@
 /// The Toml Delete extensions
 
 use toml::Value;
+use toml::value::Table;
+use toml::value::Array;
 
 use tokenizer::Token;
 use tokenizer::tokenize_with_seperator;
@@ -53,33 +55,6 @@ impl TomlValueDeleteExt for Value {
 
         let mut tokens = try!(tokenize_with_seperator(query, sep));
         let last_token = tokens.pop_last();
-
-        /// Check whether a structure (Table/Array) is empty. If the Value has not these types,
-        /// the default value is returned
-        #[inline]
-        fn is_empty(val: Option<&Value>, default: bool) -> bool {
-            val.map(|v| match v {
-                    &Value::Table(ref tab) => tab.is_empty(),
-                    &Value::Array(ref arr) => arr.is_empty(),
-                    _                      => default
-                })
-                .unwrap_or(default)
-        }
-
-        #[inline]
-        fn is_table(val: Option<&Value>) -> bool {
-            val.map(|v| is_match!(v, &Value::Table(_))).unwrap_or(false)
-        }
-
-        #[inline]
-        fn is_array(val: Option<&Value>) -> bool {
-            val.map(|v| is_match!(v, &Value::Array(_))).unwrap_or(false)
-        }
-
-        #[inline]
-        fn name_of_val(val: Option<&Value>) -> &'static str {
-            val.map(::util::name_of_val).unwrap_or("None")
-        }
 
         if last_token.is_none() {
             match self {
@@ -212,6 +187,168 @@ impl TomlValueDeleteExt for Value {
         }
     }
 
+}
+
+impl TomlValueDeleteExt for Table {
+    fn delete_with_seperator(&mut self, query: &str, sep: char) -> Result<Option<Value>> {
+        use resolver::mut_resolver::resolve_table;
+
+        let mut tokens = try!(tokenize_with_seperator(query, sep));
+        let last_token = tokens.pop_last();
+
+        if last_token.is_none() {
+            match tokens {
+                Token::Identifier { ident, .. } => {
+                    if is_empty(self.get(&ident), true) {
+                        Ok(self.remove(&ident))
+                    } else {
+                        if is_table(self.get(&ident)) {
+                            let kind = ErrorKind::CannotDeleteNonEmptyTable(Some(ident.clone()));
+                            Err(Error::from(kind))
+                        } else if is_array(self.get(&ident)) {
+                            let kind = ErrorKind::CannotDeleteNonEmptyArray(Some(ident.clone()));
+                            Err(Error::from(kind))
+                        } else {
+                            let act = name_of_val(self.get(&ident));
+                            let tbl = "table";
+                            let k   = ErrorKind::CannotAccessBecauseTypeMismatch(tbl, act);
+                            Err(Error::from(k))
+                        }
+                    }
+                },
+                _ => Ok(None)
+            }
+        } else {
+            {
+                let val = try!(resolve_table(self, &tokens, true))
+                    .unwrap(); // safe because of resolve() guarantees
+            }
+            let last_token = last_token.unwrap();
+            match *last_token {
+                Token::Identifier { ref ident, .. } => {
+                    if is_empty(self.get(ident), true) {
+                        Ok(self.remove(ident))
+                    } else {
+                        if is_table(self.get(ident)) {
+                            let kind = ErrorKind::CannotDeleteNonEmptyTable(Some(ident.clone()));
+                            Err(Error::from(kind))
+                        } else if is_array(self.get(ident)) {
+                            let kind = ErrorKind::CannotDeleteNonEmptyArray(Some(ident.clone()));
+                            Err(Error::from(kind))
+                        } else {
+                            let act = name_of_val(self.get(ident));
+                            let tbl = "table";
+                            let k   = ErrorKind::CannotAccessBecauseTypeMismatch(tbl, act);
+                            Err(Error::from(k))
+                        }
+                    }
+                },
+                Token::Index { idx, .. } => {
+                    let kind = ErrorKind::NoIndexInTable(idx);
+                    Err(Error::from(kind))
+                },
+            }
+        }
+    }
+}
+
+impl TomlValueDeleteExt for Array {
+    fn delete_with_seperator(&mut self, query: &str, sep: char) -> Result<Option<Value>> {
+        use resolver::mut_resolver::resolve_array;
+        use std::ops::Index;
+
+        let mut tokens = try!(tokenize_with_seperator(query, sep));
+        let last_token = tokens.pop_last();
+
+        if last_token.is_none() {
+            match tokens {
+                Token::Identifier { ident, .. } => {
+                    let ek = ErrorKind::NoIdentifierInArray(ident);
+                    Err(Error::from(ek))
+                },
+                Token::Index { idx , .. } => {
+                    if is_empty(Some(self.index(idx)), true) {
+                        Ok(Some(self.remove(idx)))
+                    } else {
+                        if is_table(Some(self.index(idx))) {
+                            let kind = ErrorKind::CannotDeleteNonEmptyTable(None);
+                            Err(Error::from(kind))
+                        } else if is_array(Some(self.index(idx))) {
+                            let kind = ErrorKind::CannotDeleteNonEmptyArray(None);
+                            Err(Error::from(kind))
+                        } else {
+                            let act = name_of_val(Some(self.index(idx)));
+                            let tbl = "table";
+                            let k   = ErrorKind::CannotAccessBecauseTypeMismatch(tbl, act);
+                            Err(Error::from(k))
+                        }
+                    }
+                },
+            }
+        } else {
+            {
+                let val = try!(resolve_array(self, &tokens, true))
+                    .unwrap(); // safe because of resolve() guarantees
+            }
+            let last_token = last_token.unwrap();
+            match *last_token {
+                Token::Identifier { ident, .. } => {
+                    let kind = ErrorKind::NoIdentifierInArray(ident);
+                    Err(Error::from(kind))
+                },
+                Token::Index { idx, .. } => {
+                    if idx > self.len() {
+                        let kind = ErrorKind::ArrayIndexOutOfBounds(idx, self.len());
+                        return Err(Error::from(kind))
+                    }
+                    if is_empty(Some(&self.index(idx)), true) {
+                        Ok(Some(self.remove(idx)))
+                    } else {
+                        if is_table(Some(&self.index(idx))) {
+                            let kind = ErrorKind::CannotDeleteNonEmptyTable(None);
+                            Err(Error::from(kind))
+                        } else if is_array(Some(&self.index(idx))) {
+                            let kind = ErrorKind::CannotDeleteNonEmptyArray(None);
+                            Err(Error::from(kind))
+                        } else {
+                            let act = name_of_val(Some(self.index(idx)));
+                            let tbl = "table";
+                            let k   = ErrorKind::CannotAccessBecauseTypeMismatch(tbl, act);
+                            Err(Error::from(k))
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
+
+/// Check whether a structure (Table/Array) is empty. If the Value has not these types,
+/// the default value is returned
+#[inline]
+fn is_empty(val: Option<&Value>, default: bool) -> bool {
+    val.map(|v| match v {
+            &Value::Table(ref tab) => tab.is_empty(),
+            &Value::Array(ref arr) => arr.is_empty(),
+            _                      => default
+        })
+        .unwrap_or(default)
+}
+
+#[inline]
+fn is_table(val: Option<&Value>) -> bool {
+    val.map(|v| is_match!(v, &Value::Table(_))).unwrap_or(false)
+}
+
+#[inline]
+fn is_array(val: Option<&Value>) -> bool {
+    val.map(|v| is_match!(v, &Value::Array(_))).unwrap_or(false)
+}
+
+#[inline]
+fn name_of_val(val: Option<&Value>) -> &'static str {
+    val.map(::util::name_of_val).unwrap_or("None")
 }
 
 #[cfg(test)]
