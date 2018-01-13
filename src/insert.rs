@@ -179,7 +179,7 @@ impl TomlValueInsertExt for Array {
                     self.push(value);
                     Ok(None)
                 },
-            }
+            },
             Some(last) => {
                 let val = try!(resolve_array(self, &tokens));
                 match *last {
