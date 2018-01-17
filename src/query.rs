@@ -47,6 +47,21 @@ impl<A, P, B> Query<P> for Chain<A, P, B>
     }
 }
 
+pub trait QueryExecutor {
+    fn query<Q, T>(&mut self, q: &Q) -> Result<Q::Output>
+        where Q: Query<T>;
+}
+
+impl QueryExecutor for Value {
+
+    fn query<Q, T>(&mut self, q: &Q) -> Result<Q::Output>
+        where Q: Query<T>
+    {
+        q.execute(self, None as Option<T>)
+    }
+
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -156,5 +171,49 @@ mod test {
         let mut value = Value::Boolean(true);
         let res : String = chain.execute(&mut value, None as Option<()>).unwrap();
         assert_eq!(res, "f: 1");
+    }
+
+    #[test]
+    fn compile_test_4() {
+        use read::TomlValueReadExt;
+
+        struct A;
+        impl Query<()> for A {
+            type Output = Option<Value>;
+
+            fn execute(&self, t: &mut Value, p: Option<()>) -> Result<Self::Output> {
+                t.read("foo").map(|o| o.map(Clone::clone))
+            }
+        }
+
+        struct B;
+        impl Query<Option<Value>> for B {
+            type Output = Option<(Value, Value)>;
+            fn execute(&self, t: &mut Value, p: Option<Option<Value>>) -> Result<Self::Output> {
+                let v2 = t.read("bar")?;
+
+                match p {
+                    Some(Some(v1)) => match v2 {
+                        Some(t) => Ok(Some((v1, t.clone()))),
+                        None => Ok(None),
+                    },
+
+                    Some(None) => Ok(None),
+                    None       => Ok(None)
+                }
+            }
+        }
+
+        let mut toml : Value = ::toml::from_str("foo = 1\nbar = 2").unwrap();
+        let a                = A;
+        let b                = B;
+        let query            = a.chain(b);
+        let res : Result<Option<(Value, Value)>> = toml.query(&query);
+
+        match res.unwrap() {
+            Some((Value::Integer(1), Value::Integer(2))) => assert!(true),
+            Some((_, _)) => assert!(false, "Wrong Value types"),
+            None => assert!(false, "No result"),
+        }
     }
 }
