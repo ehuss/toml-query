@@ -3,59 +3,60 @@
 use std::marker::PhantomData;
 
 use toml::Value;
-use error::Result;
 
-pub trait Query<Prev>
+pub trait Query<Prev, E>
     where Prev: Sized,
           Self: Sized
 {
     type Output: Sized;
 
-    fn execute(&self, target: &mut Value, prev_result: Option<Prev>) -> Result<Self::Output>;
+    fn execute(&self, target: &mut Value, prev_result: Option<Prev>) -> Result<Self::Output, E>;
 
-    fn chain<Q>(self, other: Q) -> Chain<Self, Prev, Q>
-        where Q: Query<Self::Output>
+    fn chain<Q>(self, other: Q) -> Chain<Self, Prev, Q, E>
+        where Q: Query<Self::Output, E>
     {
         Chain {
             first: self,
             _p: PhantomData,
-            second: other
+            second: other,
+            _e: PhantomData,
         }
     }
 }
 
-pub struct Chain<A, P, B>
-    where A: Query<P>,
-          B: Query<A::Output>,
+pub struct Chain<A, P, B, E>
+    where A: Query<P, E>,
+          B: Query<A::Output, E>,
           P: Sized
 {
     first: A,
     _p: PhantomData<P>,
     second: B,
+    _e: PhantomData<E>,
 }
 
-impl<A, P, B> Query<P> for Chain<A, P, B>
-    where A: Query<P>,
-          B: Query<A::Output>,
+impl<A, P, B, E> Query<P, E> for Chain<A, P, B, E>
+    where A: Query<P, E>,
+          B: Query<A::Output, E>,
           P: Sized
 {
     type Output = B::Output;
 
-    fn execute(&self, target: &mut Value, prev_result: Option<P>) -> Result<Self::Output> {
+    fn execute(&self, target: &mut Value, prev_result: Option<P>) -> Result<Self::Output, E> {
         let p = self.first.execute(target, prev_result)?;
         self.second.execute(target, Some(p))
     }
 }
 
 pub trait QueryExecutor {
-    fn query<Q, T>(&mut self, q: &Q) -> Result<Q::Output>
-        where Q: Query<T>;
+    fn query<Q, T, E>(&mut self, q: &Q) -> Result<Q::Output, E>
+        where Q: Query<T, E>;
 }
 
 impl QueryExecutor for Value {
 
-    fn query<Q, T>(&mut self, q: &Q) -> Result<Q::Output>
-        where Q: Query<T>
+    fn query<Q, T, E>(&mut self, q: &Q) -> Result<Q::Output, E>
+        where Q: Query<T, E>
     {
         q.execute(self, None as Option<T>)
     }
@@ -66,10 +67,12 @@ impl QueryExecutor for Value {
 mod test {
     use super::*;
 
+    type Result<T> = ::std::result::Result<T, ()>;
+
     #[test]
     fn compile_test_1() {
         struct A;
-        impl<P> Query<P> for A {
+        impl<P> Query<P, ()> for A {
             type Output = ();
             fn execute(&self, _t: &mut Value, p: Option<P>) -> Result<Self::Output> {
                 Ok(())
@@ -88,7 +91,7 @@ mod test {
     #[test]
     fn compile_test_2() {
         struct A;
-        impl<P> Query<P> for A {
+        impl<P> Query<P, ()> for A {
             type Output = ();
             fn execute(&self, _t: &mut Value, p: Option<P>) -> Result<Self::Output> {
                 Ok(())
@@ -96,7 +99,7 @@ mod test {
         }
 
         struct B;
-        impl<P> Query<P> for B {
+        impl<P> Query<P, ()> for B {
             type Output = i32;
             fn execute(&self, _t: &mut Value, p: Option<P>) -> Result<Self::Output> {
                 Ok(1)
@@ -104,7 +107,7 @@ mod test {
         }
 
         struct C;
-        impl<P> Query<P> for C {
+        impl<P> Query<P, ()> for C {
             type Output = f64;
             fn execute(&self, _t: &mut Value, p: Option<P>) -> Result<Self::Output> {
                 Ok(1.0)
@@ -112,7 +115,7 @@ mod test {
         }
 
         struct D;
-        impl<P> Query<P> for D {
+        impl<P> Query<P, ()> for D {
             type Output = String;
             fn execute(&self, _t: &mut Value, p: Option<P>) -> Result<Self::Output> {
                 Ok(String::from("Foo"))
@@ -132,7 +135,7 @@ mod test {
     #[test]
     fn compile_test_3() {
         struct A;
-        impl<P> Query<P> for A {
+        impl<P> Query<P, ()> for A {
             type Output = ();
             fn execute(&self, _t: &mut Value, p: Option<P>) -> Result<Self::Output> {
                 Ok(())
@@ -140,7 +143,7 @@ mod test {
         }
 
         struct B;
-        impl<P> Query<P> for B {
+        impl<P> Query<P, ()> for B {
             type Output = u32;
             fn execute(&self, _t: &mut Value, p: Option<P>) -> Result<Self::Output> {
                 Ok(1)
@@ -148,7 +151,7 @@ mod test {
         }
 
         struct C;
-        impl Query<u32> for C {
+        impl Query<u32, ()> for C {
             type Output = f64;
             fn execute(&self, _t: &mut Value, p: Option<u32>) -> Result<Self::Output> {
                 Ok(f64::from(p.unwrap_or(1)))
@@ -156,7 +159,7 @@ mod test {
         }
 
         struct D;
-        impl Query<f64> for D {
+        impl Query<f64, ()> for D {
             type Output = String;
             fn execute(&self, _t: &mut Value, p: Option<f64>) -> Result<Self::Output> {
                 Ok(format!("f: {}", p.unwrap_or(1.0)))
@@ -176,9 +179,12 @@ mod test {
     #[test]
     fn compile_test_4() {
         use read::TomlValueReadExt;
+        use error::Error;
+
+        type Result<T> = ::std::result::Result<T, Error>;
 
         struct A;
-        impl Query<()> for A {
+        impl Query<(), Error> for A {
             type Output = Option<Value>;
 
             fn execute(&self, t: &mut Value, p: Option<()>) -> Result<Self::Output> {
@@ -187,7 +193,7 @@ mod test {
         }
 
         struct B;
-        impl Query<Option<Value>> for B {
+        impl Query<Option<Value>, Error> for B {
             type Output = Option<(Value, Value)>;
             fn execute(&self, t: &mut Value, p: Option<Option<Value>>) -> Result<Self::Output> {
                 let v2 = t.read("bar")?;
