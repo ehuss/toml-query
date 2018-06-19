@@ -1,9 +1,41 @@
 /// The Toml Query extensions
+///
+/// The Query extension gives an interface where the user can build a chain of queries which shall
+/// be executed on a toml document.
+///
+/// The execution of the query can be implemented in different ways, for example
+///
+/// 1. errors beeing collected, but all queries are applied to the document
+/// 1. the first error halts the execution
+/// 1. something in between
+///
+/// as the implementation of the `Query` trait defines how it is executed.
+///
+/// More details are described in the documentation of the trait and types provided by this module.
+///
 
 use std::marker::PhantomData;
 
 use toml::Value;
 
+/// The Query trait
+///
+/// The Query trait describes an object which can be used to query/alter a TOML document. Thus, it
+/// gets a mutable reference to the _whole_ document.
+/// In addition, it gets the result of the previous query which was applied to the document. If the
+/// object is the first Query to be applied, it gets `None`.
+///
+/// The implementation of the `execute` function defines how the execution works and how errors are
+/// collected or populated.
+///
+/// # Chaining
+///
+/// The `Query::chain` function contains a default implementation for chaining two `Query`able
+/// objects together. The first object (the object the function is called on) gets called first in
+/// the chain.
+///
+/// See also: Documentation of the `Chain` type.
+///
 pub trait Query<Prev, E>
     where Prev: Sized,
           Self: Sized
@@ -24,6 +56,14 @@ pub trait Query<Prev, E>
     }
 }
 
+/// The `Chain` type
+///
+/// A type which can be used to chain two `Query`able objects. As `Chain` implements `Query` as
+/// well, it can be chained as well.
+///
+/// The implementation of `Query::execute` on the `Chain` type returns (the error) if the first
+/// `Query` object returns an error. The second one is not executed in this case.
+///
 pub struct Chain<A, P, B, E>
     where A: Query<P, E>,
           B: Query<A::Output, E>,
@@ -48,6 +88,13 @@ impl<A, P, B, E> Query<P, E> for Chain<A, P, B, E>
     }
 }
 
+/// A trait for execution
+///
+/// This trait defines how the overall execution of the `Query` object(s) should be invoked.
+///
+/// It is implemented for `toml::Value` which simply calls `Query::execute` for the TOML document
+/// with the `Query` object that is passed.
+///
 pub trait QueryExecutor {
     fn query<Q, T, E>(&mut self, q: &Q) -> Result<Q::Output, E>
         where Q: Query<T, E>;
@@ -63,6 +110,18 @@ impl QueryExecutor for Value {
 
 }
 
+/// A custom executor for executing queries on a document, which resets the document if an error
+/// occured during query execution
+///
+/// # Warning
+///
+/// When calling `ResetExecutor::new()`, the passed document is cloned. This may introduce a lot of
+/// overhead, but the clone is necessary for resetting the document in case of error.
+///
+/// This is a naiive implementation of a "resetting" query infrastructure and one may implement a
+/// more sophisticated solution for this problem by implementing custom `Query` objects that can
+/// handle rollback more efficiently.
+///
 struct ResetExecutor<'doc>(&'doc mut Value, Value);
 
 impl<'doc> ResetExecutor<'doc> {
