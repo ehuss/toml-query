@@ -63,6 +63,25 @@ impl QueryExecutor for Value {
 
 }
 
+struct ResetExecutor<'doc>(&'doc mut Value, Value);
+
+impl<'doc> ResetExecutor<'doc> {
+    pub fn new(doc: &'doc mut Value) -> Self {
+        ResetExecutor(doc, doc.clone())
+    }
+}
+
+impl<'doc> QueryExecutor for ResetExecutor<'doc> {
+    fn query<Q, T, E>(&mut self, q: &Q) -> Result<Q::Output, E>
+        where Q: Query<T, E>
+    {
+        q.execute(&mut self.0, None as Option<T>).map_err(|e| {
+            *self.0 = self.1;
+            e
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
